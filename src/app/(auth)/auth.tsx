@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Pressable, Alert, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { colors, spacing, typography, borderRadius } from '@/constants/theme';
-import { Feather } from '@expo/vector-icons';
+import { Feather, FontAwesome5 } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
+import * as AuthSession from 'expo-auth-session';
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function AuthScreen() {
   const router = useRouter();
@@ -46,6 +50,40 @@ export default function AuthScreen() {
       setIsLogin(true);
     }
     setLoading(false);
+  }
+
+  async function performOAuth(provider: 'google' | 'apple') {
+    setLoading(true);
+    try {
+      const redirectUrl = AuthSession.makeRedirectUri({
+        path: '/(tabs)',
+      });
+      
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: redirectUrl,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+        },
+      });
+      
+      if (error) throw error;
+      
+      if (data.url) {
+        const res = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+        if (res.type === 'success' && res.url) {
+          // In most Expo Router setups, deep links are handled automatically.
+          // The AuthContext onAuthStateChange will pick up the new session.
+        }
+      }
+    } catch (error: any) {
+      Alert.alert('OAuth Error', error.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -94,6 +132,34 @@ export default function AuthScreen() {
             {loading ? 'Please wait...' : (isLogin ? 'Sign In' : 'Sign Up')}
           </Text>
         </Pressable>
+
+        <View style={styles.dividerContainer}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>or continue with</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        <View style={styles.socialButtonsContainer}>
+          <Pressable 
+            style={[styles.socialButton, loading && styles.buttonDisabled]} 
+            onPress={() => performOAuth('google')}
+            disabled={loading}
+          >
+            <FontAwesome5 name="google" size={20} color={colors.text} />
+            <Text style={styles.socialButtonText}>Google</Text>
+          </Pressable>
+          
+          {Platform.OS === 'ios' && (
+            <Pressable 
+              style={[styles.socialButton, loading && styles.buttonDisabled]} 
+              onPress={() => performOAuth('apple')}
+              disabled={loading}
+            >
+              <FontAwesome5 name="apple" size={22} color={colors.text} />
+              <Text style={styles.socialButtonText}>Apple</Text>
+            </Pressable>
+          )}
+        </View>
 
         <Pressable 
           style={styles.switchModeButton}
@@ -166,6 +232,43 @@ const styles = StyleSheet.create({
     color: colors.background,
     fontSize: typography.sizes.md,
     fontWeight: typography.weights.semibold,
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: spacing.xl,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  dividerText: {
+    marginHorizontal: spacing.md,
+    color: colors.textSecondary,
+    fontSize: typography.sizes.sm,
+  },
+  socialButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  socialButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.md,
+    gap: spacing.sm,
+  },
+  socialButtonText: {
+    color: colors.text,
+    fontSize: typography.sizes.md,
+    fontWeight: typography.weights.medium,
   },
   switchModeButton: {
     marginTop: spacing.xl,
